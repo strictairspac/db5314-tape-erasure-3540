@@ -3,7 +3,7 @@ import {state, setSession} from './stores/session.js';
 import {roleLabels} from './constants/workflow.js';
 import {topic} from './constants/project.js';
 import {loginPage} from './pages/login.js';
-import {casesPage} from './pages/cases.js';
+import {bindCases, casesPage} from './pages/cases.js';
 import {bindEditor, editorPage} from './pages/editor.js';
 import {runsPage} from './pages/runs.js';
 import {bindEvidence, evidencePage} from './pages/evidence.js';
@@ -52,6 +52,7 @@ async function refresh() {
   app.innerHTML=`<header class="masthead"><a class="identity" href="#cases">${esc(topic.name)}</a><div class="user"><span>${esc(roleLabels[state.session.role])}</span><button id="logout" class="secondary">退出</button></div></header>
     <div class="workspace"><nav aria-label="业务模块">${navigation}</nav><main><div id="message" role="alert"></div>${pages[page](state,id)}</main></div>`;
   document.getElementById('logout').addEventListener('click',()=>{setSession(null); void refresh();});
+  if (page==='cases') bindCases(state, api, fail, refresh);
   if (page==='editor') bindEditor(state, api, fail);
   if (page==='evidence') bindEvidence(api, refresh, fail);
   if (page==='runs') {

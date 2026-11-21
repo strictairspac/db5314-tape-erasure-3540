@@ -3,9 +3,8 @@ from pathlib import Path
 from threading import Event, Thread
 from time import sleep
 
-from src.config.settings import ARTIFACTS, cache, engine
-from src.services.domain import solve
-from src.services.workflow import claim, finish
+from src.config.settings import ARTIFACTS, cache
+from src.services.workflow import claim, execute_run, fail_run
 
 HEARTBEAT = Path(ARTIFACTS) / 'worker-heartbeat'
 
@@ -25,18 +24,17 @@ def work():
             if not job:
                 cache.brpop('worker:wake', timeout=1)
                 continue
-            run_id, token, payload = job
+            run_id, token = job
             stop = Event()
             thread = Thread(target=heartbeat, args=(stop,), daemon=True)
             thread.start()
             try:
-                result = solve(payload, engine)
-                finish(run_id, token, result=result)
+                execute_run(run_id, token)
             except (ValueError, KeyError, TypeError) as exc:
-                finish(run_id, token, error=str(exc)[:500])
+                fail_run(run_id, token, str(exc))
             except Exception:
                 logging.exception('Domain run failed: %s', run_id)
-                finish(run_id, token, error='后台执行失败，请检查输入或查看 worker 日志。')
+                fail_run(run_id, token, '后台执行失败，请检查输入或查看 worker 日志。')
             finally:
                 stop.set()
                 thread.join()

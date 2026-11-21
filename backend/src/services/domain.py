@@ -70,6 +70,10 @@ def _day(value, label):
     return value
 
 
+def parse_day(value, label='留存检查日'):
+    return _day(value, label)
+
+
 def _text(row, key):
     value = row.get(key)
     if not isinstance(value, str) or not value or value != value.strip():
@@ -87,6 +91,19 @@ def _rows(payload, key):
     if not isinstance(value, list):
         raise ValueError(f'{SPEC["field_labels"][key]}须为行对象数组')
     return value
+
+
+def parse_hold(row):
+    """校验单条合同留存关联，返回规范化后的 Hold。"""
+    _fields(row, {'contract_id', 'asset_id', 'hold_until'}, '合同留存关联')
+    contract_id = _text(row, 'contract_id')
+    asset_id = _text(row, 'asset_id')
+    if 'hold_until' not in row:
+        raise ValueError('合同必须提供留存截止日，无固定截止日时填写 null')
+    hold_until = row['hold_until']
+    if hold_until is not None:
+        _day(hold_until, '合同留存截止日')
+    return Hold(contract_id, asset_id, hold_until)
 
 
 def _parse(payload):
@@ -130,19 +147,18 @@ def _parse(payload):
     holds = set()
     hold_keys = set()
     for row in _rows(payload, 'holds'):
-        _fields(row, {'contract_id', 'asset_id', 'hold_until'}, '合同留存关联')
-        contract_id = _text(row, 'contract_id')
-        asset_id = _text(row, 'asset_id')
-        if asset_id not in assets or (contract_id, asset_id) in hold_keys:
+        hold = parse_hold(row)
+        key = (hold.contract_id, hold.asset_id)
+        if hold.asset_id not in assets or key in hold_keys:
             raise ValueError('合同留存关联重复或指向目录中不存在的资产')
-        if 'hold_until' not in row:
-            raise ValueError('合同必须提供留存截止日，无固定截止日时填写 null')
-        hold_until = row['hold_until']
-        if hold_until is not None:
-            _day(hold_until, '合同留存截止日')
-        holds.add(Hold(contract_id, asset_id, hold_until))
-        hold_keys.add((contract_id, asset_id))
+        holds.add(hold)
+        hold_keys.add(key)
     return cutoff, Catalog(assets, references, holds)
+
+
+def parse_payload(payload):
+    """校验并解析留存检查单，返回 (cutoff, Catalog)。"""
+    return _parse(payload)
 
 
 def validate(payload):
@@ -162,11 +178,8 @@ def _retention_reason(asset_id, plan, before):
     return '本批擦除范围外'
 
 
-def solve(payload, engine):
-    cutoff, catalog = _parse(payload)
-    with catalog_copy(catalog) as db:
-        before, after, plan, archive = apply_erasure(db, cutoff)
-
+def build_report(before, after, plan, archive, cutoff):
+    """按执行前后目录、擦除计划和归档分组生成擦除证据报告。"""
     deleted = set(plan.deletion_order)
     tape_count = len(deleted & plan.due_tapes)
     nodes = {asset_id: f'N{n:03d}' for n, asset_id in enumerate(sorted(before.assets), start=1)}
@@ -182,6 +195,7 @@ def solve(payload, engine):
 
     bands = ('少于 60 秒', '60 至 179 秒', '180 秒及以上')
     return {
+        'cutoff': cutoff,
         'summary': f'已在隔离副本擦除 {tape_count} 条到期样带，留存 {len(after.assets)} 项资产，核验 {len(archive)} 组匿名归档。',
         'metrics': {
             '到期样带': len(plan.due_tapes), '擦除样带': tape_count,
@@ -206,3 +220,10 @@ def solve(payload, engine):
             ]},
         ],
     }
+
+
+def solve(payload, engine):
+    cutoff, catalog = _parse(payload)
+    with catalog_copy(catalog) as db:
+        before, after, plan, archive = apply_erasure(db, cutoff)
+    return build_report(before, after, plan, archive, cutoff)

@@ -13,7 +13,7 @@ export function runsPage(state, identity) {
   const active = selected && ['queued','running'].includes(selected.status);
   const detail = selected ? `<h2>${esc(cases.get(selected.case_id) || selected.case_id)}</h2>
     <p data-testid="run-status">${badge(selected.status)}</p>
-    <dl><dt>启动时间</dt><dd>${esc(date(selected.started_at))}</dd><dt>完成时间</dt><dd>${esc(date(selected.finished_at))}</dd></dl>
+    <dl><dt>检查日</dt><dd>${esc(selected.cutoff || '—')}</dd><dt>启动时间</dt><dd>${esc(date(selected.started_at))}</dd><dt>完成时间</dt><dd>${esc(date(selected.finished_at))}</dd></dl>
     ${selected.error ? `<p class="error">${esc(selected.error)}</p>` : ''}
     ${active?'<p class="note">后台处理中，记录会自动刷新。</p>':''}
     ${result?`<a class="button" href="#evidence/${result.id}">查看业务证据</a>`:''}` : '<h2>执行记录</h2><p>从档案创建一条执行记录后，可在此查看进度。</p>';

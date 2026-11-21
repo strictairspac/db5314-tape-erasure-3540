@@ -13,5 +13,13 @@ class CaseForm(BaseModel):
     payload: dict[str, Any]
 
 
+class RunForm(BaseModel):
+    cutoff: str | None = Field(default=None, min_length=10, max_length=10)
+
+
+class HoldsForm(BaseModel):
+    holds: list[dict[str, Any]] = Field(min_length=1, max_length=500)
+
+
 class ReviewForm(BaseModel):
     note: str = Field(min_length=1, max_length=500)

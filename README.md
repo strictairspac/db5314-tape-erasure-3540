@@ -22,6 +22,7 @@ docker compose up -d --build --wait
 - `docker compose exec -T backend python -m scripts.seed_demo` 手动重跑演示数据
 - `docker compose logs -f backend worker` 查看运行情况
 - `docker compose down` 停容器并保留演示卷
+- `PYTHONPATH=backend python3 -m unittest discover -s backend/tests -v` 无需服务的领域与副本行为测试
 
 ### 演示账号
 
@@ -45,7 +46,7 @@ docker compose up -d --build --wait
 | db | MySQL 8.0，持久卷保存档案、执行、证据及审计 |
 | redis | Redis 7，追加日志卷保存队列唤醒信号 |
 
-编辑 `backend/src/services/domain.py` 可修改试算方法与业务表单说明。API 路由、数据定义和页面位于 `backend/src/routes/`、`backend/src/models/` 与 `frontend/src/pages/`。开发时更新源文件后重新构建对应服务。
+编辑 `backend/src/services/domain.py` 可修改试算方法与业务表单说明。持久隔离副本的播种、补录与执行位于 `backend/src/services/replica.py`：副本留到下个检查日接着用，提交执行时可选检查日，擦除排队后仍可补录合同，目录变更与擦除证据在同一事务落库。API 路由、数据定义和页面位于 `backend/src/routes/`、`backend/src/models/` 与 `frontend/src/pages/`。开发时更新源文件后重新构建对应服务。
 
 `.env.example` 提供 `FRONTEND_PORT`、`BACKEND_PORT`、`DB_PORT`、`DB_PASSWORD`、`AUTH_KEY` 、`SEED_DEMO` 与 `NETWORK_SUBNET`。修改 `NETWORK_SUBNET` 可避开本机现有容器网段。所有发布的端口绑定本机回环地址。接入独立部署前需配置自己的凭据并按业务范围做独立验收。
 

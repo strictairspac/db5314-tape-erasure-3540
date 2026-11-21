@@ -167,10 +167,26 @@ def write_archive(db, deletion_order):
     db.execute('DROP TABLE erasure_scope')
 
 
-def verify_applied_state(db, before, after, plan, cutoff, archive):
+def archive_cohorts(before, plan):
+    """按类别和时长区间汇总本批待删样带，返回通过小样本门槛的分组。"""
+    cohorts = defaultdict(list)
+    for asset_id in set(plan.deletion_order) & plan.due_tapes:
+        asset = before.assets[asset_id]
+        band = int(asset.duration_seconds >= 60) + int(asset.duration_seconds >= 180)
+        cohorts[asset.track, band].append(asset.performer_id)
+    return [
+        (track, band, len(performers), len(set(performers)))
+        for (track, band), performers in sorted(cohorts.items())
+        if len(set(performers)) >= MIN_PERFORMERS
+    ]
+
+
+def verify_applied_state(before, after, plan, cutoff, archive):
     deleted = set(plan.deletion_order)
-    if db.execute('PRAGMA foreign_key_check').fetchone() is not None:
+    if any(endpoint not in after.assets for edge in after.references for endpoint in edge):
         raise ErasureInvariantError('擦除后存在悬空引用')
+    if any(hold.asset_id not in after.assets for hold in after.holds):
+        raise ErasureInvariantError('擦除后存在悬空合同关联')
     if any(hold.active_on(cutoff) and hold not in after.holds for hold in before.holds):
         raise ErasureInvariantError('生效合同关联丢失')
     if not plan.held_dependencies <= after.assets.keys():
@@ -185,18 +201,7 @@ def verify_applied_state(db, before, after, plan, cutoff, archive):
         before.assets[key].kind == 'tape' and before.assets[key].expires_on > cutoff for key in deleted
     ):
         raise ErasureInvariantError('擦除范围包含未到期或无关资产')
-
-    cohorts = defaultdict(list)
-    for asset_id in deleted & plan.due_tapes:
-        asset = before.assets[asset_id]
-        band = int(asset.duration_seconds >= 60) + int(asset.duration_seconds >= 180)
-        cohorts[asset.track, band].append(asset.performer_id)
-    expected_archive = []
-    for (track, band), performers in sorted(cohorts.items()):
-        performer_count = len(set(performers))
-        if performer_count >= MIN_PERFORMERS:
-            expected_archive.append((track, band, len(performers), performer_count))
-    if archive != expected_archive:
+    if list(archive) != archive_cohorts(before, plan):
         raise ErasureInvariantError('匿名归档的分组、人数或样带数不符')
 
 
@@ -212,5 +217,5 @@ def apply_erasure(db, cutoff):
             db.execute('DELETE FROM assets WHERE asset_id = ?', (asset_id,))
         after = read_catalog(db)
         archive = db.execute('SELECT * FROM anonymous_archive ORDER BY track, duration_band').fetchall()
-        verify_applied_state(db, before, after, plan, cutoff, archive)
+        verify_applied_state(before, after, plan, cutoff, archive)
     return before, after, plan, archive
